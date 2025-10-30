@@ -1,83 +1,52 @@
-import { useState,useEffect } from "react";
+import { useState, useEffect } from "react";
 import "./App.css";
-import { AuthComponent } from "./component/auth";
-import {db} from './config/firebase';
-import {getDocs,collection,addDoc,doc,deleteDoc} from 'firebase/firestore';
+import { db } from "./config/firebase";
+import { getDocs, collection, addDoc } from "firebase/firestore";
+import { MailForm } from "./components/MailForm";
+import { MailList } from "./components/MailList";
 
 function App() {
-    const [movieList,setMovieList]=useState([]);
-    const moviesCollectionRef=collection(db,"movies");
-    const [newMovieTitle, setNewMovieTitle] = useState("");
-    const [newReleaseDate, setNewReleaseDate] = useState(0);
-    const [isNewMovieOscar, setisNewMovieOscar] = useState(false);
+  const [mailList, setMailList] = useState([]);
+  const mailsCollectionRef = collection(db, "mails");
 
+  // ✅ Fetch mails
+  const getMailList = async () => {
+    try {
+      const data = await getDocs(mailsCollectionRef);
+      const mails = data.docs.map((doc) => ({
+        ...doc.data(),
+        id: doc.id,
+      }));
+      setMailList(mails);
+    } catch (err) {
+      console.error("Error fetching mails:", err);
+    }
+  };
 
-    const getMovieList=async()=>{
-            try{
-                const data=await getDocs(moviesCollectionRef);
-                const filteredData=data.docs.map((doc)=>({ ...doc.data(), id: doc.id }));
-                // console.log(filteredData);
-                setMovieList(filteredData);
-            }catch(err){
-                console.error("Error fetching movie list: ", err);
-            }
-        };
-    useEffect(()=>{
-        
-        getMovieList();
-    },[]);
-    const deleteMovie = async (id) => {
-const movieDoc = doc(db, "movies", id);
-await deleteDoc(movieDoc);
-};
+  useEffect(() => {
+    getMailList();
+  }, []);
 
-    const onSubmitMovie = async () => {
-try {
-await addDoc(moviesCollectionRef, {
-title: newMovieTitle,
-releaseDate: newReleaseDate,
-receivedAnOscar: isNewMovieOscar,
-});
-getMovieList();
-} catch (err){
-    console.error(err);
-}
+  // ✅ Add new mail
+  const addMail = async (input, output) => {
+    try {
+      await addDoc(mailsCollectionRef, {
+        input,
+        output,
+      });
+      getMailList();
+    } catch (err) {
+      console.error("Error adding mail:", err);
+    }
+  };
 
-
-};
-
-    return <div className="App"><AuthComponent />
-    <div>
-<input
-placeholder="Movie title ... "
-onChange={(e) => setNewMovieTitle(e.target.value)}
-/>
-<input
-placeholder="Release Date ... "
-type="number"
-onChange={(e) => setNewReleaseDate(Number(e.target.value))}
-/>
-<input
-type="checkbox"
-checked={isNewMovieOscar}
-onChange={(e) => setisNewMovieOscar(e.target.checked)}
-/>
-<label> Received an Oscar</label>
-<button onClick ={onSubmitMovie}> Submit Movie</button>
-</div>
-    <div>
-  {movieList.map((movie) => (
-    <div key={movie.id}>
-      <h1 style={{ color: movie.receivedAnOscar ? "green" : "red" }}>
-        {movie.title}
-      </h1>
-      <p>Date: {movie.releaseDate}</p>
-        <button onClick={() => deleteMovie(movie.id)}>Delete Movie</button>
+  return (
+    <div className="App">
+      <h1>📧 Firebase Mail App</h1>
+      <MailForm onAdd={addMail} />
+      <MailList mails={mailList} />
     </div>
-  ))}
-</div>
-
-    </div>;
+  );
 }
 
 export default App;
