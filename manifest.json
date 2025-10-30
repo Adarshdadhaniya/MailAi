@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Gmail → Firebase Sync",
+  "version": "1.0",
+  "description": "Scrapes Gmail messages and replies, then saves them to Firebase Firestore.",
+  "permissions": ["scripting", "storage"],
+  "host_permissions": ["https://mail.google.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["firebase.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "firebase/firebase-app-compat.js",
+        "firebase/firebase-firestore-compat.js",
+        "scripts/firebase-init.js",
+        "scripts/injected.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
