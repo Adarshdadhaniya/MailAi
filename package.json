@@ -1,33 +1,7 @@
 {
-  "name": "firebase",
+  "name": "gmail-to-firebase-ext",
   "version": "1.0.0",
-  "description": "trial",
-  "main": "index.js",
-  "scripts": {
-    "start": "npx react-scripts start",
-    "build": "npx react-scripts build",
-    "test": "npx react-scripts test",
-    "eject": "npx react-scripts eject",
-    "dev": "npm start"
-  },
+  "description": "Chrome extension to sync Gmail messages to Firebase Firestore",
   "author": "Adarsh",
-  "license": "ISC",
-  "dependencies": {
-    "firebase": "^12.4.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1"
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  }
+  "license": "ISC"
 }
