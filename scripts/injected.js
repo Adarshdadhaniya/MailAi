@@ -430,24 +430,29 @@ In summary: All your replies must stay true to and fully informed by the initial
       }
 
       // Generate AI reply based on matched docs
-      const aiReply = await generateAIResponse(incoming, matched);
-      if (!aiReply) {
-        sendToPopup("AI_STATUS", {
-          type: "error",
-          title: "Generation Failed",
-          status: "Manual Reply",
-          message: "AI generation failed. Try again later."
-        });
-        return;
-      }
+     // Generate AI reply based on matched docs
+const aiReply = await generateAIResponse(incoming, matched);
+if (!aiReply) {
+  sendToPopup("AI_STATUS", {
+    type: "error",
+    title: "Generation Failed",
+    status: "Manual Reply",
+    message: "AI generation failed. Try again later."
+  });
+  return;
+}
 
-      // Final payload to popup
-      sendToPopup("AI_RESPONSE", {
-        response: String(aiReply),
-        summary: shortSummary,
-        matches: matched.length,
-        snippet: incoming.slice(0, 200)
-      });
+// ✨ Insert generated reply into Gmail compose box
+insertIntoReplyBox(String(aiReply));
+
+// Final payload to popup
+sendToPopup("AI_RESPONSE", {
+  response: String(aiReply),
+  summary: shortSummary,
+  matches: matched.length,
+  snippet: incoming.slice(0, 200)
+});
+
 
       sendToPopup("AI_STATUS", {
         type: "success",
@@ -593,5 +598,33 @@ In summary: All your replies must stay true to and fully informed by the initial
 
   // start
   init();
+// ---------------- Insert AI reply into Gmail compose box ----------------
+function insertIntoReplyBox(text) {
+  try {
+    const editable =
+      document.querySelector('div[aria-label="Message Body"][contenteditable="true"]') ||
+      document.querySelector('div[role="textbox"][g_editable="true"]') ||
+      document.querySelector('div[aria-label="Message Body"]');
+
+    if (!editable) {
+      console.warn("[GMAIL-AI] Compose box not found. Please click reply first.");
+      return false;
+    }
+
+    editable.focus();
+    try {
+      document.execCommand("selectAll", false, null);
+      document.execCommand("insertText", false, text);
+    } catch (err) {
+      editable.innerText = text;
+    }
+
+    console.log("[GMAIL-AI] ✅ Inserted AI reply into compose box");
+    return true;
+  } catch (err) {
+    console.warn("[GMAIL-AI] insertIntoReplyBox error:", err);
+    return false;
+  }
+}
 
 })();
