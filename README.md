@@ -86,5 +86,5 @@ This project is proudly **open-source**.
 Contributions, pull requests, and creative ideas are always welcome!  
 
 ```bash
-git clone https://github.com/<your-username>/Threadless.git
+git clone https://github.com/Adarshdadhaniya/Threadless.git
 cd Threadless
