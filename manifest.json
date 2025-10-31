@@ -1,10 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Gmail → Firebase Sync",
-  "version": "1.0",
-  "description": "Scrapes Gmail messages and replies, then saves them to Firebase Firestore.",
-  "permissions": ["scripting", "storage"],
+  "name": "Gmail → Firebase Sync with AI",
+  "version": "2.0",
+  "description": "Scrapes Gmail messages, uses Chrome AI APIs, and saves to Firebase Firestore.",
+  "permissions": ["scripting", "storage", "sidePanel"],
   "host_permissions": ["https://mail.google.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    },
+    "default_title": "Gmail AI Assistant"
+  },
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
@@ -22,5 +34,8 @@
       ],
       "matches": ["<all_urls>"]
     }
-  ]
+  ],
+  "side_panel": {
+    "default_path": "popup.html"
+  }
 }
