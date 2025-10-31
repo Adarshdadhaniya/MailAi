@@ -1,13 +1,12 @@
 /**********************************************************************
  * Gmail AI integration (injected script)
- * - Uses Firestore collection "movies" with documents { input, output }
+ * - Uses Firestore collection "mails" with documents { input, output }
  * - Uses Chrome built-in Prompt API (LanguageModel) and Summarizer API
  * - Waits for Firebase to be ready before querying
  * - Finds similar entries by asking the LanguageModel to return indices
  * - Builds an initialPrompts context from matched docs (input/output)
  * - Generates non-streamed reply via session.prompt()
  * - Summarizes incoming & outgoing messages and saves to Firestore 'mails'
- * - Sends status updates via window.postMessage for popup to read
  **********************************************************************/
 
 (() => {
@@ -26,15 +25,6 @@
   let summarizer = null;
   let aiSession = null;
   let writeCooldown = false;
-
-  // send message to popup / other listeners
-  function sendToPopup(type, data = {}) {
-    try {
-      window.postMessage({ source: "gmail-ai-extension", type, data, ts: new Date().toISOString() }, "*");
-    } catch (e) {
-      warn("Failed to postMessage to popup:", e);
-    }
-  }
 
   // ---------------- FIRESTORE READY / FETCH HELPERS ----------------
   // Wait for window.db to be available (firebase-init should dispatch firebase-ready)
@@ -75,7 +65,6 @@
             id: doc.id || null,
             input: data.input || (data.question || ""),
             output: data.output || (data.answer || ""),
-            raw: data
           });
         });
 
@@ -180,64 +169,56 @@
   }
 
   // ---------------- AI: Summarizer & Prompt flows ----------------
+  async function initSummarizerIfNeeded(detail = "short") {
+    try {
+      // Return existing session if already initialized
+      if (summarizer) return summarizer;
 
+      // Check if Prompt API is available
+      if (typeof LanguageModel === "undefined" || !LanguageModel.create) {
+        console.warn("⚠ Prompt API not present on page");
+        return null;
+      }
 
-async function initSummarizerIfNeeded(detail = "short") {
-  try {
-    // 🔄 Return existing session if already initialized
-    if (summarizer) return summarizer;
+      // Create the model session
+      summarizer = await LanguageModel.create({
+        monitor(m) {
+          m.addEventListener("downloadprogress", (e) => {
+            console.log(
+              `⬇ Model download progress: ${(e.loaded * 100).toFixed(1)}%`
+            );
+          });
+        }
+      });
 
-    // 🧩 Check if Prompt API is available
-    if (typeof LanguageModel === "undefined" || !LanguageModel.create) {
-      console.warn("⚠ Prompt API not present on page");
+      console.log("✅ Summarizer (Prompt API) initialized");
+      return summarizer;
+    } catch (err) {
+      console.warn("initSummarizerIfNeeded error:", err);
       return null;
     }
-
-    // 🧠 Create the model session (replaces Summarizer.create)
-    summarizer = await LanguageModel.create({
-      monitor(m) {
-        m.addEventListener("downloadprogress", (e) => {
-          console.log(
-            `⬇ Model download progress: ${(e.loaded * 100).toFixed(1)}%`
-          );
-        });
-      },
-      // Optional tuning for stability
-      // temperature: 0.3,
-      // topK: 40,
-    });
-
-    console.log("✅ Summarizer (Prompt API) initialized");
-    return summarizer;
-  } catch (err) {
-    console.warn("initSummarizerIfNeeded error:", err);
-    return null;
   }
-}
 
-async function summarizeText(text, detail = "short") {
-  try {
-    const s = await initSummarizerIfNeeded(detail);
-    if (!s) return text;
+  async function summarizeText(text, detail = "short") {
+    try {
+      const s = await initSummarizerIfNeeded(detail);
+      if (!s) return text;
 
-    // 💬 Create a tailored summarization prompt
-    const prompt =
-      detail === "full"
-        ? `Provide a detailed, coherent summary preserving important details and clarity:\n\n${text}`
-        : `Summarize this text briefly, extracting only essential key points:\n\n${text}`;
+      // Create a tailored summarization prompt
+      const prompt =
+        detail === "full"
+          ? `Provide a detailed, coherent summary preserving important details and clarity:\n\n${text}`
+          : `Summarize this text briefly, extracting only essential key points:\n\n${text}`;
 
-    console.log(`🧠 Summarizing (${detail})...`);
-    const result = await s.prompt(prompt);
+      console.log(`🧠 Summarizing (${detail})...`);
+      const result = await s.prompt(prompt);
 
-    return result?.trim() || text;
-  } catch (err) {
-    console.warn("summarizeText error:", err);
-    return text;
+      return result?.trim() || text;
+    } catch (err) {
+      console.warn("summarizeText error:", err);
+      return text;
+    }
   }
-}
-
-
-  
 
   // Ask LanguageModel to identify similar inputs. Returns matched docs (subset).
   async function findSimilarQuestionsWithAI(receivedText, docs) {
@@ -310,25 +291,40 @@ async function summarizeText(text, detail = "short") {
       if (availability === "unavailable") return null;
 
       const initialPrompts = [
+
         {
+
   role: "system",
+
   content: `
+
 You are an AI responder that must generate replies strictly based on the information, rules, and examples provided in the initial prompt. 
+
 Your job is to fully answer every user question using only the context, patterns, and logic given in that initial prompt — not any external facts or your own assumptions.
 
+
+
 Guidelines:
+
 1. Always respond in the same tone, style, and structure as shown in the examples.
+
 2. Use the examples as factual and stylistic references — adapt them when a new question is similar.
+
 3. If the user's message does not match any example exactly, make your best possible answer by analogical reasoning from similar examples.
+
 4. Never mention being an AI or refer to yourself. Simply reply as the example responses would.
+
 5. Always ensure the user’s question is completely and clearly answered using only the initial prompt’s context.
+
 6. The goal is consistency, completeness, and coherence — your response must sound like it came from the same source as the examples.
 
+
+
 In summary: All your replies must stay true to and fully informed by the initial prompt. Do not rely on outside knowledge.
+
 `
+
 }
-
-
       ];
 
       // Add matched docs as user/assistant turns (input => user, output => assistant)
@@ -339,18 +335,16 @@ In summary: All your replies must stay true to and fully informed by the initial
         console.log({role: "assistant", content: String(d.output || "") });
       });
 
-
       aiSession = await LanguageModel.create({
-  initialPrompts,
-  temperature: 0.6,
-  topK: 40, // 👈 add this line
-  monitor(m) {
-    m.addEventListener("downloadprogress", (e) => {
-      log("LanguageModel (gen) download:", `${(e.loaded * 100).toFixed(1)}%`);
-    });
-  }
-});
-
+        initialPrompts,
+        temperature: 0.6,
+        topK: 40,
+        monitor(m) {
+          m.addEventListener("downloadprogress", (e) => {
+            log("LanguageModel (gen) download:", `${(e.loaded * 100).toFixed(1)}%`);
+          });
+        }
+      });
 
       // Non-streamed call
       const reply = await aiSession.prompt(receivedText);
@@ -373,23 +367,10 @@ In summary: All your replies must stay true to and fully informed by the initial
       }
       log("New mail opened (snippet):", incoming.slice(0, 160));
 
-      sendToPopup("AI_STATUS", {
-        type: "processing",
-        title: "Analyzing email",
-        status: "Processing",
-        message: "Fetching training data and running AI..."
-      });
-
       // Ensure Firestore ready and fetch training documents
       const ready = await waitForFirebaseReady();
       if (!ready) {
         warn("Firebase did not become ready in time.");
-        sendToPopup("AI_STATUS", {
-          type: "error",
-          title: "Firebase Error",
-          status: "Not Ready",
-          message: "Could not access Firestore. Check firebase-init."
-        });
         return;
       }
 
@@ -404,77 +385,42 @@ In summary: All your replies must stay true to and fully informed by the initial
       log(`Loaded ${trainingDocs.length} training docs`);
 
       if (!trainingDocs.length) {
-        sendToPopup("AI_STATUS", {
-          type: "warning",
-          title: "No Training Data",
-          status: "Manual Reply",
-          message: "No documents found in 'movies' collection. Please add training examples."
-        });
+        warn("No training data found in 'mails' collection.");
         return;
       }
 
       // Summarize incoming (short)
       const shortSummary = await summarizeText(incoming, "short");
       console.log("Short summary of incoming:", shortSummary);
+      
       // Find matched docs using LanguageModel
       const matched = await findSimilarQuestionsWithAI(incoming, trainingDocs);
 
       if (!matched.length) {
-        sendToPopup("AI_STATUS", {
-          type: "info",
-          title: "No Matches",
-          status: "Manual Reply",
-          message: "No similar training examples found. Reply manually or add training data."
-        });
+        log("No similar training examples found.");
         return;
       }
 
       // Generate AI reply based on matched docs
-     // Generate AI reply based on matched docs
-const aiReply = await generateAIResponse(incoming, matched);
-if (!aiReply) {
-  sendToPopup("AI_STATUS", {
-    type: "error",
-    title: "Generation Failed",
-    status: "Manual Reply",
-    message: "AI generation failed. Try again later."
-  });
-  return;
-}
+      const aiReply = await generateAIResponse(incoming, matched);
+      if (!aiReply) {
+        error("AI generation failed.");
+        return;
+      }
 
-// ✨ Insert generated reply into Gmail compose box
-insertIntoReplyBox(String(aiReply));
+      // Insert generated reply into Gmail compose box
+      insertIntoReplyBox(String(aiReply));
 
-// Final payload to popup
-sendToPopup("AI_RESPONSE", {
-  response: String(aiReply),
-  summary: shortSummary,
-  matches: matched.length,
-  snippet: incoming.slice(0, 200)
-});
-
-
-      sendToPopup("AI_STATUS", {
-        type: "success",
-        title: "Response Ready",
-        status: "Complete",
-        message: `Generated suggestion using ${matched.length} example(s).`
-      });
+      log(`✅ Response ready using ${matched.length} example(s)`);
     } catch (err) {
       error("handleMailOpen error:", err);
-      sendToPopup("AI_ERROR", { message: err && err.message ? err.message : String(err) });
     }
   }
 
   // ---------------- When user clicks send (save conversation) ----------------
   async function handleSendButton(inputBeforeSend) {
     try {
-      sendToPopup("AI_STATUS", {
-        type: "processing",
-        title: "Saving Conversation",
-        status: "Processing",
-        message: "Capturing reply and summarizing..."
-      });
+      log("Capturing and saving conversation...");
 
       const reply = await waitForNewReply(inputBeforeSend, 15000).catch((e) => {
         warn("waitForNewReply timed out or errored:", e && e.message);
@@ -483,35 +429,27 @@ sendToPopup("AI_RESPONSE", {
 
       if (!reply) {
         warn("No reply captured, aborting save.");
-        sendToPopup("AI_STATUS", { type: "warning", title: "Save Aborted", status: "No Reply" });
         return;
       }
 
       // Summaries
-       const summarizedInput = await summarizeText(inputBeforeSend, "short");
-  const summarizedOutput = await summarizeText(reply, "full");
-
+      const summarizedInput = await summarizeText(inputBeforeSend, "short");
+      const summarizedOutput = await summarizeText(reply, "full");
 
       const doc = {
         input: summarizedInput,
         output: summarizedOutput,
-        rawInput: inputBeforeSend || "",
-        rawOutput: reply,
-        timestamp: new Date().toISOString()
       };
 
-      // Save to 'mails' collection (not 'movies' so training is separate)
+      // Save to 'mails' collection
       if (window.db && typeof window.db.collection === "function") {
         await window.db.collection("mails").add(doc);
-        log("Saved conversation to 'mails' collection");
-        sendToPopup("AI_STATUS", { type: "success", title: "Saved", status: "Complete", message: "Conversation saved to Firestore." });
+        log("✅ Saved conversation to 'mails' collection");
       } else {
         warn("Cannot save: Firestore not ready.");
-        sendToPopup("AI_ERROR", { message: "Cannot save conversation. Firestore not ready." });
       }
     } catch (err) {
       error("handleSendButton error:", err);
-      sendToPopup("AI_ERROR", { message: err && err.message ? err.message : String(err) });
     }
   }
 
@@ -556,6 +494,35 @@ sendToPopup("AI_RESPONSE", {
     log("Send listener installed");
   }
 
+  // ---------------- Insert AI reply into Gmail compose box ----------------
+  function insertIntoReplyBox(text) {
+    try {
+      const editable =
+        document.querySelector('div[aria-label="Message Body"][contenteditable="true"]') ||
+        document.querySelector('div[role="textbox"][g_editable="true"]') ||
+        document.querySelector('div[aria-label="Message Body"]');
+
+      if (!editable) {
+        console.warn("[GMAIL-AI] Compose box not found. Please click reply first.");
+        return false;
+      }
+
+      editable.focus();
+      try {
+        document.execCommand("selectAll", false, null);
+        document.execCommand("insertText", false, text);
+      } catch (err) {
+        editable.innerText = text;
+      }
+
+      console.log("[GMAIL-AI] ✅ Inserted AI reply into compose box");
+      return true;
+    } catch (err) {
+      console.warn("[GMAIL-AI] insertIntoReplyBox error:", err);
+      return false;
+    }
+  }
+
   // ---------------- Init ----------------
   async function init() {
     if (window.__gmailAiInit) return;
@@ -581,50 +548,19 @@ sendToPopup("AI_RESPONSE", {
       setTimeout(handleMailOpen, 1200);
     }
 
-    sendToPopup("AI_STATUS", { type: "success", title: "Injected", status: "Active", message: "Gmail AI script injected and observing." });
-    log("Initialization complete");
+    log("✅ Initialization complete");
   }
 
   // expose debug helpers
   window.__gmailAIDebug = {
-  fetchMails: async () => {
-    if (!(await waitForFirebaseReady())) throw new Error("Firestore not ready");
-    return await fetchAllDocsFromCollection("mails");
-  },
-
+    fetchMails: async () => {
+      if (!(await waitForFirebaseReady())) throw new Error("Firestore not ready");
+      return await fetchAllDocsFromCollection("mails");
+    },
     runMailOpen: async () => handleMailOpen(),
     summarizeNow: async (text) => summarizeText(text || "test", "short")
   };
 
   // start
   init();
-// ---------------- Insert AI reply into Gmail compose box ----------------
-function insertIntoReplyBox(text) {
-  try {
-    const editable =
-      document.querySelector('div[aria-label="Message Body"][contenteditable="true"]') ||
-      document.querySelector('div[role="textbox"][g_editable="true"]') ||
-      document.querySelector('div[aria-label="Message Body"]');
-
-    if (!editable) {
-      console.warn("[GMAIL-AI] Compose box not found. Please click reply first.");
-      return false;
-    }
-
-    editable.focus();
-    try {
-      document.execCommand("selectAll", false, null);
-      document.execCommand("insertText", false, text);
-    } catch (err) {
-      editable.innerText = text;
-    }
-
-    console.log("[GMAIL-AI] ✅ Inserted AI reply into compose box");
-    return true;
-  } catch (err) {
-    console.warn("[GMAIL-AI] insertIntoReplyBox error:", err);
-    return false;
-  }
-}
-
 })();
