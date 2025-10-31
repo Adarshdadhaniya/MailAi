@@ -1,18 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Gmail → Firebase Sync with AI",
+  "name": "Threadless",
   "version": "2.0",
   "description": "Scrapes Gmail messages, uses Chrome AI APIs, and saves to Firebase Firestore.",
-  "permissions": ["scripting", "storage", "sidePanel"],
+  "permissions": ["scripting", "storage"],
   "host_permissions": ["https://mail.google.com/*"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup.html",
     "default_icon": {
-      "16": "icon16.png",
-      "48": "icon48.png",
+      "16": "icon128.png",
+      "48": "icon128.png",
       "128": "icon128.png"
     },
     "default_title": "Gmail AI Assistant"
@@ -34,8 +33,5 @@
       ],
       "matches": ["<all_urls>"]
     }
-  ],
-  "side_panel": {
-    "default_path": "popup.html"
-  }
+  ]
 }
